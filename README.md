@@ -1,5 +1,5 @@
 # Marval-AI-Project
-This project focuses on designing and implementing a personalized AI-powered teaching assistant tailored to the specific needs of the company. The assistant will leverage providing real-time support, answer student's queries, streamline onboarding processes, and facilitate knowledge sharing across teams. Key features include interactive learning modules, automated responses to frequently asked questions, and personalized recommendations for skill development. The goal is to enhance employee productivity, improve training efficiency, and foster a culture of continuous learning within the organization.
+This project focuses on designing and implementing a personalized AI-based teaching assistant designed for the specific needs of the company. The assistant will provide real-time help, answer students' questions, allow easier onboarding, and help teams share knowledge. Some of the key features are interactive learning modules, auto-response for common questions, and personalized skill enhancement recommendations. It is intended to increase what staff can accomplish, ensure training is more effective, and establish a culture of continuous learning within the company.
 
 ## Key Objectives:
 - Develop a user-friendly interface for seamless interaction with the teaching assistant.
