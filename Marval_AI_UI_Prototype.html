@@ -369,7 +369,7 @@
     <div class="avatar">AS</div>
     <div class="user-info">
       <div class="user-name">Admin Space</div>
-      <div class="user-role">Marvel AI</div>
+      <div class="user-role">Marvel</div>
     </div>
   </div>
 </aside>
@@ -416,28 +416,36 @@ const SUGGESTIONS = [
   { icon: "🛠️", text: "Tech stack deep-dive", sub: "LangChain, Redis, Next.js", q: "Give me a deep dive on our tech stack — frontend, backend, and AI pipeline." },
 ];
 
-const AI_RESPONSES = {
-  "What's the onboarding checklist for a new software engineer?": {
-    text: `Welcome! Here's your Day 1 engineering onboarding checklist:\n\n**Access & Accounts**\n• Set up GitHub org access + clone the monorepo\n• Get Slack, Notion, and Jira access from IT\n• Configure AWS/GCP credentials with your team lead\n\n**Local Dev Setup**\n• Run \`docker-compose up -d\` to spin up Redis + PostgreSQL\n• Install frontend: \`cd apps/web && npm install\`\n• Install backend: \`cd apps/api && pip install -r requirements.txt\`\n• Copy \`.env.example → .env.local\` and add your API keys\n\n**First Week Goals**\n• Complete the Engineering Handbook (linked in Notion)\n• Shadow one sprint ceremony\n• Ship a small "hello world" PR to get familiar with the review process\n\nNeed help with any specific step?`,
-    sources: ["Engineering Handbook v2.3", "IT Onboarding Guide", "Dev Environment Setup"]
-  },
-  "Explain how our RAG pipeline works, including embeddings and retrieval.": {
-    text: `Our RAG pipeline follows a 5-stage architecture:\n\n**1. Ingestion**\nDocuments (PDFs, Confluence, Notion) are loaded, chunked into ~512 token segments with 50-token overlap, then embedded via \`text-embedding-3-small\`.\n\n**2. Indexing**\nEmbeddings are stored in Redis Vector Search with HNSW indexing for approximate nearest-neighbor lookups at millisecond latency.\n\n**3. Query Processing**\nIncoming queries are classified by intent, then embedded with the same model for vector similarity.\n\n**4. Retrieval + Re-ranking**\nTop-20 candidates retrieved via cosine similarity → re-ranked by a cross-encoder to top-5 by semantic relevance.\n\n**5. Generation**\nRetrieved chunks + original query assembled into a structured prompt → GPT-4o generates a grounded response with inline citations.\n\nAverage latency: ~480ms end-to-end.`,
-    sources: ["RAG Architecture Doc", "chain.py", "retriever.py", "LangChain LCEL Guide"]
-  },
-  "What is the company leave policy including PTO and sick days?": {
-    text: `Here's a summary of the current leave policy:\n\n**PTO (Paid Time Off)**\n• 20 days/year accrued monthly (1.67 days/month)\n• Up to 5 days can roll over to the next calendar year\n• Requests must be submitted 2 weeks in advance for 3+ days\n\n**Sick Leave**\n• 10 days/year, separate from PTO\n• No advance notice required; notify your manager by 9am\n• A doctor's note required for 3+ consecutive sick days\n\n**Other Leave**\n• Parental leave: 16 weeks fully paid (primary caregiver), 8 weeks (secondary)\n• Bereavement: 5 days for immediate family\n• Jury duty: fully paid for up to 2 weeks\n\nFor the full policy doc, see Notion → HR Policies → Leave & Benefits.`,
-    sources: ["HR Policy Manual 2025", "Benefits Overview", "Employee Handbook §4.2"]
-  },
-  "Give me a deep dive on our tech stack — frontend, backend, and AI pipeline.": {
-    text: `Here's the full stack breakdown:\n\n**Frontend — Next.js 14**\nApp Router with React Server Components. Tailwind CSS + shadcn/ui for the design system. NextAuth.js handles SSO. Zustand for client state, React Query for server state caching.\n\n**Backend — FastAPI (Python 3.11)**\nAsync endpoints, Pydantic v2 for schema validation. Structured into routers (chat, feedback, ingest) → services layer → data layer. Deployed on AWS ECS with auto-scaling.\n\n**AI Pipeline**\n• Orchestration: LangChain LCEL chains + LlamaIndex query engines\n• LLM: GPT-4o (swappable via config)\n• Embeddings: \`text-embedding-3-small\` (1536 dims)\n• Vector store: Redis Vector Search (HNSW)\n• Tracing: LangSmith for full LLM observability\n\n**Infrastructure**\nVercel for frontend deploys. Docker Compose for local dev. GitHub Actions for CI/CD. Sentry for error monitoring. Supabase (PostgreSQL) for user data and conversation history.`,
-    sources: ["Architecture Doc v1.4", "apps/web/README.md", "apps/api/README.md", "Infra Runbook"]
-  }
-};
-
 let currentView = 'chat';
 let chatHistory = [];
 let isTyping = false;
+
+async function callClaudeAPI(userMessage, history) {
+  // Build messages array with full conversation history
+  const messages = [
+    ...history,
+    { role: 'user', content: userMessage }
+  ];
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: `You are Marval AI, a friendly and knowledgeable teaching assistant for a tech company. You help employees with onboarding, answer questions about the tech stack (Next.js 14, FastAPI, LangChain, Redis Vector Search, OpenAI GPT-4o, RAG pipelines), explain company processes, assist with coding questions, and support continuous learning. Be concise, helpful, and conversational. Use bullet points and bold text for structured answers. When relevant, mention that answers come from the company knowledge base.`,
+      messages
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.content?.[0]?.text || 'Sorry, I could not generate a response.';
+}
 
 function renderWelcome() {
   const msgs = document.getElementById('messages');
@@ -553,27 +561,18 @@ async function sendMessage() {
   document.getElementById('sendBtn').disabled = true;
 
   appendMessage('user', text);
-  chatHistory.push({ role: 'user', content: text });
-
   showTyping();
 
-  await new Promise(r => setTimeout(r, 900 + Math.random() * 600));
-
-  removeTyping();
-
-  const response = AI_RESPONSES[text];
-  let replyText, sources;
-
-  if (response) {
-    replyText = response.text;
-    sources = response.sources;
-  } else {
-    replyText = `I searched our knowledge base for **"${text}"** and here's what I found:\n\nThis topic is covered in our internal documentation. Based on the relevant sources, I can provide guidance on this. For the most accurate and up-to-date information, I'd recommend cross-referencing with the specific team or policy owner.\n\nIs there a specific aspect of this you'd like me to dig deeper into? I can also point you to the relevant Notion page or team contact.`;
-    sources = ["Internal Knowledge Base", "Company Wiki"];
+  try {
+    const replyText = await callClaudeAPI(text, chatHistory);
+    removeTyping();
+    appendMessage('ai', replyText, []);
+    chatHistory.push({ role: 'user', content: text });
+    chatHistory.push({ role: 'assistant', content: replyText });
+  } catch (err) {
+    removeTyping();
+    appendMessage('ai', `⚠️ **Could not connect to AI.** Error: ${err.message}\n\nMake sure you are running this prototype from within Claude.ai — it uses the built-in API connection.`, []);
   }
-
-  appendMessage('ai', replyText, sources);
-  chatHistory.push({ role: 'assistant', content: replyText });
 
   isTyping = false;
   document.getElementById('sendBtn').disabled = false;
